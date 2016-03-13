@@ -1,6 +1,7 @@
 #!/bin/sh
 
-VERSION=`sw_vers -productVersion | cut -f 1,2 -d "."`
+#VERSION=`sw_vers -productVersion | cut -f 1,2 -d "."`
+VERSION=10.11
 CC=clang
 
 if [[ -z "$JAVA_HOME" ]]; then
