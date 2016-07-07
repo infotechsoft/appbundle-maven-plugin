@@ -1,4 +1,5 @@
 /*
+ * Copyright 2016, InfotechSoft Inc.
  * Copyright 2014, Takashi AOKI, John Vasquez, Wolfgang Fahl, and other contributors.
  * Copyright 2001-2008 The Codehaus.
  *
@@ -16,6 +17,8 @@
  */
 package sh.tak.appbundler;
 
+import org.apache.maven.shared.model.fileset.SetBase;
+
 /**
  * Object of this class represents a set of file resources
  * that can be specified by directory and exclude/include patterns.
@@ -24,63 +27,22 @@ package sh.tak.appbundler;
  *
  * @author Zhenya Nyden, Schwarmi Bamamoto
  */
-public class FileSet extends org.apache.maven.model.FileSet {
+public class FileSet extends SetBase {
 
-    /**
-     * When false, disables the default excludes.
-     * Default value is true.
-     *
-     * @parameter expression="true"
-     */
-    private boolean useDefaultExcludes;
-
-    /**
-     * @parameter expression="false"
-     */
-    private boolean executable;
-
-    /**
-     * Getter for the useDefaultExcludes property.
-     * Returns true if default excludes are going to be added to
-     * the FileSet's list of excludes; false if only user excludes
-     * are going to be used.
-     *
-     * @return Value for useDefaultExcludes property.
-     */
-    public boolean isUseDefaultExcludes() {
-        return useDefaultExcludes;
-    }
-
-    /**
-     * Setter for the useDefaultExcludes property.
-     * Set it to false if default excludes should not be added to the FileSet's
-     * list of excludes. Set it to true if default excludes are also required.
-     *
-     * @param useDefaultExcludes Value for the useDefaultExcludes to set.
-     */
-    public void setUseDefaultExcludes( boolean useDefaultExcludes ) {
-        this.useDefaultExcludes = useDefaultExcludes;
-    }
-
-    /**
-     * Getter for the executbale property.
-     * Return true if the should be executable. The flag is for file management
-     * method calls that should be aware of setting the execute flag after
-     * copying or moving.
-     * @return the executable
-     */
-    public boolean isExecutable() {
-        return executable;
-    }
-
-    /**
-     * Setter for execute property.
-     * Setting this the execute property to true means that the execute flag
-     * of this file should be set. This is userfull for helper applilactions that
-     * are included in the .dmg file.
-     * @param executable the executable to set
-     */
-    public void setExecutable(boolean executable) {
-        this.executable = executable;
-    }
+  /**
+   * 
+   * Absolute or relative from the module's directory. For example, "src/main/bin" would select this
+   * subdirectory of the project in which this dependency is defined.
+   * 
+   * @parameter
+   */
+  private String directory;
+  
+  public String getDirectory() {
+    return directory;
+  }
+  
+  public void setDirectory(String directory) {
+    this.directory = directory;
+  }
 }
