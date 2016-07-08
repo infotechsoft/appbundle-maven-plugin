@@ -37,6 +37,11 @@ import org.apache.maven.artifact.repository.layout.ArtifactRepositoryLayout;
 import org.apache.maven.artifact.repository.layout.DefaultRepositoryLayout;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugins.annotations.Component;
+import org.apache.maven.plugins.annotations.LifecyclePhase;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.apache.maven.shared.utils.StringUtils;
@@ -59,11 +64,8 @@ import sh.tak.appbundler.logging.MojoLogChute;
 
 /**
  * Package dependencies as an Application Bundle for Mac OS X.
- *
- * @goal bundle
- * @phase package
- * @requiresDependencyResolution runtime
  */
+@Mojo(name = "bundle", requiresDependencyResolution = ResolutionScope.RUNTIME, defaultPhase = LifecyclePhase.PACKAGE)
 public class CreateApplicationBundleMojo extends AbstractMojo {
 
   /**
@@ -83,26 +85,20 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
 
   /**
    * The Maven Project Object
-   *
-   * @parameter default-value="${project}"
-   * @readonly
    */
+  @Parameter(defaultValue = "${project}", readonly = true)
   private MavenProject project;
 
   /**
    * The Maven Project Helper Object.
-   *
-   * @component
-   * @readonly
    */
+  @Component
   private MavenProjectHelper projectHelper;
 
   /**
    * The Velocity Component.
-   *
-   * @component
-   * @readonly
    */
+  @Component
   private VelocityComponent velocity;
 
   /**
@@ -113,16 +109,15 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
    * <br/>
    *
    * @see http://jira.codehaus.org/browse/MOJO-874
-   * @parameter
    */
+  @Parameter
   private List<String> additionalClasspath;
 
   /**
    * Additional resources (as a list of <code>FileSet</code> objects) that will be copied into the
    * build directory and included in the .dmg alongside with the application bundle.
-   *
-   * @parameter
    */
+  @Parameter
   private List<FileSet> additionalResources;
 
   /**
@@ -130,16 +125,14 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
    * <br/>
    * <br/>
    * These could include additional JARs or JNI libraries.
-   *
-   * @parameter
    */
+  @Parameter
   private List<FileSet> additionalBundledClasspathResources;
 
   /**
    * The directory where the application bundle will be created.
-   *
-   * @parameter default-value="${project.build.directory}/${project.build.finalName}";
    */
+  @Parameter(defaultValue = "${project.build.directory}/${project.build.finalName}")
   private File buildDirectory;
 
   /**
@@ -147,10 +140,8 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
    * <br/>
    * This is the name that is given to the application bundle; and it is also what will show up in
    * the application menu, dock etc.
-   *
-   * @parameter default-value="${project.name}"
-   * @required
    */
+  @Parameter(defaultValue = "${project.name}", required = true)
   private String bundleName;
 
   /**
@@ -158,18 +149,16 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
    * <br/>
    *
    * Classpath is checked before the file system.
-   *
-   * @parameter default-value="sh/tak/appbundler/Info.plist.template"
    */
+  @Parameter(defaultValue = "sh/tak/appbundler/Info.plist.template")
   private String dictionaryFile;
 
   /**
    * The location of the generated disk image (.dmg) file. <br/>
    * <br/>
    * This property depends on the <code>generateDiskImageFile</code> property.
-   *
-   * @parameter default-value="${project.build.directory}/${project.build.finalName}.dmg"
    */
+  @Parameter(defaultValue = "${project.build.directory}/${project.build.finalName}.dmg")
   private File diskImageFile;
 
   /**
@@ -180,91 +169,79 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
    * property.
    *
    * This feature can only be executed in Mac OS X environments.
-   *
-   * @parameter default-value="false"
    */
+  @Parameter(defaultValue = "false")
   private boolean diskImageInternetEnable;
 
   /**
    * Tells whether to generate the disk image (.dmg) file or not. <br/>
    * <br/>
    * This feature can only be executed in Mac OS X and Linux environments.
-   *
-   * @parameter default-value="false"
    */
+  @Parameter(defaultValue = "false")
   private boolean generateDiskImageFile;
 
   /**
    * Tells whether to include a symbolic link to the generated disk image (.dmg) file or not. <br/>
    * <br/>
    * Relevant only if generateDiskImageFile is set.
-   *
-   * @parameter default-value="false"
    */
+  @Parameter(defaultValue = "false")
   private boolean includeApplicationsSymlink;
 
   /**
    * The icon (.icns) file for the bundle.
-   *
-   * @parameter
    */
+  @Parameter
   private String iconFile;
 
   /**
    * The name of the Java launcher, to execute when double-clicking the Application Bundle.
-   *
-   * @parameter default-value="JavaAppLauncher";
    */
+  @Parameter(defaultValue = "JavaAppLauncher")
   private String javaLauncherName;
 
   /**
    * Options to the JVM, will be used as the value of <code>JVMOptions</code> in the
    * <code>Info.plist</code>.
-   *
-   * @parameter
    */
+  @Parameter
   private List<String> jvmOptions;
 
   /**
    * The value for the <code>JVMVersion</code> key.
-   *
-   * @parameter default-value="1.6+"
    */
+  @Parameter(defaultValue = "1.6+")
   private String jvmVersion;
 
   /**
    * The main class to execute when double-clicking the Application Bundle.
-   *
-   * @parameter property="mainClass"
-   * @required
    */
+  @Parameter(property = "mainClass", required = true)
   private String mainClass;
 
   /**
    * The version of the project. <br/>
    * <br/>
    * Will be used as the value of the <code>CFBundleVersion</code> key.
-   *
-   * @parameter default-value="${project.version}"
    */
+  @Parameter(defaultValue = "${project.version}")
   private String version;
 
   /**
    * The path to the working directory. <br/>
    * This can be inside or outside the app bundle. <br/>
    * To define a working directory <b>inside</b> the app bundle, use e.g. <code>$APP_ROOT</code>.
-   *
-   * @parameter default-value="$APP_ROOT"
    */
+  @Parameter(defaultValue = "$APP_ROOT")
   private String workingDirectory;
 
   /**
    * The path to the working directory. <br/>
    * This can be inside or outside the app bundle. <br/>
    * To define a working directory <b>inside</b> the app bundle, use e.g. <code>$APP_ROOT</code>.
-   *
-   * @parameter default-value=""
    */
+  @Parameter(defaultValue = "")
   private String jrePath;
 
   /**

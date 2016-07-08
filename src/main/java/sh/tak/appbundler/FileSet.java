@@ -17,6 +17,7 @@
  */
 package sh.tak.appbundler;
 
+import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.shared.model.fileset.SetBase;
 
 /**
@@ -33,9 +34,8 @@ public class FileSet extends SetBase {
    * 
    * Absolute or relative from the module's directory. For example, "src/main/bin" would select this
    * subdirectory of the project in which this dependency is defined.
-   * 
-   * @parameter
    */
+  @Parameter
   private String directory;
   
   public String getDirectory() {
