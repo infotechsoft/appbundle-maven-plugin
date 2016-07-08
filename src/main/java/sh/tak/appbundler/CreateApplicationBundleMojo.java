@@ -54,11 +54,19 @@ import org.apache.velocity.exception.ResourceNotFoundException;
 import org.codehaus.plexus.archiver.ArchiveEntry;
 import org.codehaus.plexus.archiver.dir.DirectoryArchiver;
 import org.codehaus.plexus.archiver.util.DefaultFileSet;
+import org.codehaus.plexus.interpolation.PrefixAwareRecursionInterceptor;
+import org.codehaus.plexus.interpolation.fixed.EnvarBasedValueSource;
+import org.codehaus.plexus.interpolation.fixed.FixedStringSearchInterpolator;
+import org.codehaus.plexus.interpolation.fixed.InterpolationState;
+import org.codehaus.plexus.interpolation.fixed.PrefixedObjectValueSource;
+import org.codehaus.plexus.interpolation.fixed.PrefixedPropertiesValueSource;
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.cli.CommandLineException;
 import org.codehaus.plexus.util.cli.Commandline;
 import org.codehaus.plexus.velocity.VelocityComponent;
+
+import com.google.common.collect.ImmutableList;
 
 import sh.tak.appbundler.logging.MojoLogChute;
 
@@ -76,7 +84,13 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
   /**
    * Default JVM options passed to launcher
    */
-  private static String[] defaultJvmOptions = { "-Dapple.laf.useScreenMenuBar=true" };
+  private static final String[] defaultJvmOptions = { "-Dapple.laf.useScreenMenuBar=true" };
+
+  private static final List<String> PROJECT_PREFIXES = ImmutableList.of("pom.", "project.");
+
+  private static final List<String> PROPJECT_PROPERTIES_PREFIXES = ImmutableList.of(
+          "pom.properties",
+          "project.properties");
 
   /**
    * signals the Info.plit creator that a JRE is present.
@@ -244,30 +258,38 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
   @Parameter(defaultValue = "")
   private String jrePath;
 
+  private AppBundlerConfig config;
+  private final PrefixAwareRecursionInterceptor interceptor = new PrefixAwareRecursionInterceptor(
+          PROJECT_PREFIXES,
+          true);
+  private FixedStringSearchInterpolator interpolator;
+
   /**
    * Bundle project as a Mac OS X application bundle.
    *
    * @throws MojoExecutionException If an unexpected error occurs during packaging of the bundle.
    */
   public void execute() throws MojoExecutionException {
+    config = createConfig();
+    interpolator = createInterpolator();
 
     // 1. Create and set up directories
     getLog().info("Creating and setting up the bundle directories");
     buildDirectory.mkdirs();
 
-    File bundleDir = new File(buildDirectory, bundleName + ".app");
+    File bundleDir = new File(buildDirectory, config.getBundlePath());
     bundleDir.mkdirs();
 
-    File contentsDir = new File(bundleDir, "Contents");
+    File contentsDir = new File(buildDirectory, config.getContentsPath());
     contentsDir.mkdirs();
 
-    File resourcesDir = new File(contentsDir, "Resources");
+    File resourcesDir = new File(buildDirectory, config.getResourcesPath());
     resourcesDir.mkdirs();
 
-    File javaDirectory = new File(contentsDir, "Java");
+    File javaDirectory = new File(buildDirectory, config.getJavaPath());
     javaDirectory.mkdirs();
 
-    File macOSDirectory = new File(contentsDir, "MacOS");
+    File macOSDirectory = new File(buildDirectory, config.getMacOsPath());
     macOSDirectory.mkdirs();
 
     // 2. Copy in the native java application stub
@@ -464,6 +486,32 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
     }
 
     getLog().info("App Bundle generation finished");
+  }
+
+  private AppBundlerConfig createConfig() {
+    return new AppBundlerConfig(
+            bundleName + ".app",
+            bundleName + ".app/Contents",
+            bundleName + ".app/Contents/Java",
+            bundleName + ".app/Contents/Resources",
+            bundleName + ".app/Contents/MacOS");
+  }
+
+  private FixedStringSearchInterpolator createInterpolator() throws MojoExecutionException {
+    try {
+      return FixedStringSearchInterpolator.create(
+              new PrefixedObjectValueSource("appbundler.", config),
+              new PrefixedPropertiesValueSource(
+                      PROPJECT_PROPERTIES_PREFIXES,
+                      project.getProperties(),
+                      true),
+              new PrefixedObjectValueSource(PROJECT_PREFIXES, project, true),
+              new EnvarBasedValueSource());
+    } catch (IOException e) {
+      throw new MojoExecutionException(
+              "Exception creating property interpolator: " + e.getMessage(),
+              e);
+    }
   }
 
   /**
@@ -666,6 +714,7 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
 
       String outDir = fs.getOutputDirectory();
       if (StringUtils.isNotBlank(outDir)) {
+        outDir = interpolate(outDir);
         if (!outDir.endsWith(File.separator)) {
           outDir = outDir + File.separator;
         }
@@ -692,6 +741,12 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
       }
     }
     return copiedFiles;
+  }
+
+  private String interpolate(String expression) {
+    InterpolationState is = new InterpolationState();
+    is.setRecursionInterceptor(interceptor);
+    return interpolator.interpolate(expression, is);
   }
 
   private static int modeToInt(String mode) throws MojoExecutionException {
