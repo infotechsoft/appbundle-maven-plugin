@@ -69,6 +69,7 @@ import org.codehaus.plexus.velocity.VelocityComponent;
 import com.google.common.collect.ImmutableList;
 
 import sh.tak.appbundler.logging.MojoLogChute;
+import sh.tak.appbundler.logging.MojoLogger;
 
 /**
  * Package dependencies as an Application Bundle for Mac OS X.
@@ -694,6 +695,7 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
 
   private List<String> copyFiles(File dest, List<FileSet> fileSets) throws MojoExecutionException {
     DirectoryArchiver copier = new DirectoryArchiver();
+    copier.enableLogging(new MojoLogger(getLog()));
     copier.setDestFile(dest);
     for (FileSet fs : fileSets) {
       int dirMode = modeToInt(fs.getDirectoryMode());
