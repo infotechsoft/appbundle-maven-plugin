@@ -256,6 +256,13 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
   private List<String> jvmOptions;
 
   /**
+   * Arguments to pass to main method, will be used as the value of <code>JVMArguments</code> in the
+   * <code>Info.plist</code>
+   */
+  @Parameter
+  private List<String> jvmArguments;
+
+  /**
    * The value for the <code>JVMVersion</code> key.
    */
   @Parameter(defaultValue = "1.6+")
@@ -709,7 +716,7 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
     velocityContext.put("jvmVersion", jvmVersion);
 
     StringBuilder options = new StringBuilder();
-    options.append("<array>").append("\n      ");
+    options.append("<array>").append("\n");
 
     for (String jvmOption : defaultJvmOptions) {
       options.append("      ").append("<string>").append(jvmOption).append("</string>").append(
@@ -729,6 +736,19 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
     options.append("    ").append("</array>");
     velocityContext.put("jvmOptions", options);
 
+    StringBuilder arguments = new StringBuilder();
+    arguments.append("<array>").append("\n");
+
+    if (jvmArguments != null) {
+      for (String jvmArg : jvmArguments) {
+        arguments.append("      ").append("<string>").append(jvmArg).append("</string>").append(
+                "\n");
+      }
+    }
+
+    arguments.append("    ").append("</array>");
+    velocityContext.put("jvmArguments", arguments);
+
     StringBuilder jarFiles = new StringBuilder();
     jarFiles.append("<array>").append("\n");
     for (String file : files) {
@@ -737,7 +757,8 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
 
     if (additionalClasspath != null) {
       for (String pathElement : additionalClasspath) {
-        jarFiles.append("      ").append("<string>").append(pathElement).append("</string>");
+        jarFiles.append("      ").append("<string>").append(pathElement).append("</string>").append(
+                "\n");
       }
     }
     jarFiles.append("    ").append("</array>");

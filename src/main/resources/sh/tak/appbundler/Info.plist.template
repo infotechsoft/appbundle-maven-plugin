@@ -41,7 +41,7 @@
     <key>JVMOptions</key>
     ${jvmOptions}
     <key>JVMArguments</key>
-    <array/>
+    ${jvmArguments}
     <key>LauncherWorkingDirectory</key>
     <string>${workingDirectory}</string>
   </dict>

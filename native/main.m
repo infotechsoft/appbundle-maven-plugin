@@ -202,14 +202,16 @@ int launch(char *commandName) {
     argv[i++] = strdup([libraryPath UTF8String]);
 
     for (NSString *option in options) {
-        option = [option stringByReplacingOccurrencesOfString:@APP_ROOT_PREFIX withString:[mainBundle bundlePath]];
+        option = [option stringByReplacingOccurrencesOfString:@APP_ROOT_PREFIX withString:mainBundlePath];
+        option = [option stringByReplacingOccurrencesOfString:@USER_HOME_PREFIX withString:userHomePath];
         argv[i++] = strdup([option UTF8String]);
     }
 
     argv[i++] = strdup([mainClassName UTF8String]);
 
     for (NSString *argument in arguments) {
-        argument = [argument stringByReplacingOccurrencesOfString:@APP_ROOT_PREFIX withString:[mainBundle bundlePath]];
+        argument = [argument stringByReplacingOccurrencesOfString:@APP_ROOT_PREFIX withString:mainBundlePath];
+        argument = [argument stringByReplacingOccurrencesOfString:@USER_HOME_PREFIX withString:userHomePath];
         argv[i++] = strdup([argument UTF8String]);
     }
 
