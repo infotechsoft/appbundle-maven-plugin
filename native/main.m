@@ -1,4 +1,5 @@
 /*
+ * Copyright 2016, InfotechSoft Inc.
  * Copyright 2014, Copyright 2014, Takashi AOKI, John Vasquez, Wolfgang Fahl, and other contributors. All rights reserved.
  * Copyright 2012, Oracle and/or its affiliates. All rights reserved.
  *
@@ -41,6 +42,7 @@
 #define UNSPECIFIED_ERROR "An unknown error occurred."
 
 #define APP_ROOT_PREFIX "$APP_ROOT"
+#define USER_HOME_PREFIX "$USER_HOME"
 
 #define LIBJLI_DYLIB "/Library/Internet Plug-Ins/JavaAppletPlugin.plugin/Contents/Home/lib/jli/libjli.dylib"
 
@@ -137,6 +139,7 @@ int launch(char *commandName) {
     // Set the class path
     NSString *mainBundlePath = [mainBundle bundlePath];
     NSString *javaPath = [mainBundlePath stringByAppendingString:@"/Contents/Java"];
+    NSString *userHomePath = NSHomeDirectory();
     NSMutableString *classPath = [NSMutableString stringWithFormat:@"-Djava.class.path=%@/Classes", javaPath];
 
     NSFileManager *defaultFileManager = [NSFileManager defaultManager];
@@ -147,16 +150,31 @@ int launch(char *commandName) {
             userInfo:nil] raise];
     }
 
-    for (NSString *file in javaDirectoryContents) {
-        if ([file hasSuffix:@".jar"]) {
-            [classPath appendFormat:@":%@/%@", javaPath, file];
-        }
-    }
-
     NSArray *classPathEntries = [infoDictionary objectForKey:@JVM_CLASS_PATHS_KEY];
 
     for (NSString *classPathEntry in classPathEntries) {
-        [classPath appendFormat:@":%@/%@", javaPath, classPathEntry];
+        NSMutableString *toAdd = [NSMutableString stringWithString:classPathEntry];
+        [toAdd replaceOccurrencesOfString:@APP_ROOT_PREFIX withString:mainBundlePath options: NSLiteralSearch range: NSMakeRange(0, [toAdd length])];
+        [toAdd replaceOccurrencesOfString:@USER_HOME_PREFIX withString:userHomePath options: NSLiteralSearch range: NSMakeRange(0, [toAdd length])];
+        if (!toAdd.absolutePath) {
+            [toAdd insertString:[javaPath stringByAppendingString:@"/"] atIndex:0];
+        }
+        if ([toAdd.lastPathComponent isEqualToString:@"*"]) {
+            NSString *dirPath = toAdd.stringByDeletingLastPathComponent;
+            NSArray *dirContents = [defaultFileManager contentsOfDirectoryAtPath:dirPath error:nil];
+            if (dirContents == nil) {
+                [[NSException exceptionWithName:@JAVA_LAUNCH_ERROR
+                    reason:NSLocalizedString(@"ClassPathDirectoryNotFound", @UNSPECIFIED_ERROR)
+                    userInfo:nil] raise];
+            }
+            for (NSString *file in dirContents) {
+                if ([file hasSuffix:@".jar"]) {
+                    [classPath appendFormat:@":%@/%@", dirPath, file];
+                }
+            }
+        } else {
+            [classPath appendFormat:@":%@", toAdd];
+        }
     }
 
     // Set the library path
@@ -204,6 +222,11 @@ int launch(char *commandName) {
             }
             argv[i++] = jargv[j];
         }
+    }
+    
+    for (int i = 0; i < argc; i++) {
+        NSString *arg = [NSString stringWithCString:argv[i] encoding:NSUTF8StringEncoding];
+        NSLog(@"%@%@", arg, @"\n");
     }
 
     // Invoke JLI_Launch()
