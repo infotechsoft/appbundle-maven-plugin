@@ -812,15 +812,12 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
     DirectoryArchiver copier = new DirectoryArchiver();
     copier.enableLogging(new MojoLogger(getLog()));
     copier.setDestFile(dest);
+    List<String> copiedFiles = new ArrayList<String>();
     for (FileSet fs : fileSets) {
       int dirMode = modeToInt(fs.getDirectoryMode());
-      if (dirMode != -1) {
-        copier.setDirectoryMode(dirMode);
-      }
+      copier.setDirectoryMode(dirMode);
       int fileMode = modeToInt(fs.getFileMode());
-      if (fileMode != -1) {
-        copier.setFileMode(fileMode);
-      }
+      copier.setFileMode(fileMode);
 
       DefaultFileSet fileSet = new DefaultFileSet();
       File baseDirectory = new File(fs.getDirectory());
@@ -843,20 +840,28 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
       fileSet.setExcludes(fs.getExcludesArray());
       fileSet.setUsingDefaultExcludes(fs.isUseDefaultExcludes());
       copier.addFileSet(fileSet);
-    }
-    Map<String, ArchiveEntry> copiedFilesMap = copier.getFiles();
-    try {
-      copier.createArchive();
-    } catch (Exception e) {
-      throw new MojoExecutionException("Error copying resources: " + e.getMessage(), e);
-    }
-
-    List<String> copiedFiles = new ArrayList<String>(copiedFilesMap.size());
-    for (String fileName : copiedFilesMap.keySet()) {
-      if (fileName != null && fileName.length() > 0) {
-        copiedFiles.add(fileName);
+      
+      Map<String, ArchiveEntry> copiedFilesMap = copier.getFiles();
+      try {
+        copier.createArchive();
+      } catch (Exception e) {
+        throw new MojoExecutionException("Error copying resources: " + e.getMessage(), e);
+      }
+      
+      for (String fileName : copiedFilesMap.keySet()) {
+        if (fileName != null && fileName.length() > 0) {
+          copiedFiles.add(fileName);
+          getLog().debug("Copied file " + fileName + " to bundle.");
+        }
+      }
+      
+      try {
+        copier.resetArchiver();
+      } catch (IOException e) {
+        throw new MojoExecutionException("Error copying resources: " + e.getMessage(), e);
       }
     }
+
     getLog().info("Copied " + copiedFiles.size() + " file(s) to bundle.");
     return copiedFiles;
   }

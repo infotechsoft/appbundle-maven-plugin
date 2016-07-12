@@ -162,15 +162,14 @@ int launch(char *commandName) {
         if ([toAdd.lastPathComponent isEqualToString:@"*"]) {
             NSString *dirPath = toAdd.stringByDeletingLastPathComponent;
             NSArray *dirContents = [defaultFileManager contentsOfDirectoryAtPath:dirPath error:nil];
-            if (dirContents == nil) {
-                [[NSException exceptionWithName:@JAVA_LAUNCH_ERROR
-                    reason:NSLocalizedString(@"ClassPathDirectoryNotFound", @UNSPECIFIED_ERROR)
-                    userInfo:nil] raise];
-            }
-            for (NSString *file in dirContents) {
-                if ([file hasSuffix:@".jar"]) {
-                    [classPath appendFormat:@":%@/%@", dirPath, file];
+            if (dirContents != nil) {
+                for (NSString *file in dirContents) {
+                    if ([file hasSuffix:@".jar"]) {
+                        [classPath appendFormat:@":%@/%@", dirPath, file];
+                    }
                 }
+            } else {
+                NSLog(@"Non-existent directory referenced in class path entry: %@", toAdd);
             }
         } else {
             [classPath appendFormat:@":%@", toAdd];
