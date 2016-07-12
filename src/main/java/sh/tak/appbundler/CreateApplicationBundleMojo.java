@@ -26,15 +26,20 @@ import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 
 import javax.xml.stream.XMLInputFactory;
 
 import org.apache.commons.lang.SystemUtils;
 import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.repository.layout.ArtifactRepositoryLayout;
-import org.apache.maven.artifact.repository.layout.DefaultRepositoryLayout;
+import org.apache.maven.artifact.resolver.filter.AndArtifactFilter;
+import org.apache.maven.artifact.resolver.filter.ArtifactFilter;
+import org.apache.maven.execution.MavenSession;
+import org.apache.maven.model.Model;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Component;
@@ -44,6 +49,13 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
+import org.apache.maven.project.ProjectBuilder;
+import org.apache.maven.project.ProjectBuildingException;
+import org.apache.maven.project.ProjectBuildingRequest;
+import org.apache.maven.project.ProjectBuildingResult;
+import org.apache.maven.shared.artifact.filter.PatternExcludesArtifactFilter;
+import org.apache.maven.shared.artifact.filter.PatternIncludesArtifactFilter;
+import org.apache.maven.shared.artifact.filter.StatisticsReportingArtifactFilter;
 import org.apache.maven.shared.utils.StringUtils;
 import org.apache.velocity.Template;
 import org.apache.velocity.VelocityContext;
@@ -60,6 +72,8 @@ import org.codehaus.plexus.interpolation.fixed.FixedStringSearchInterpolator;
 import org.codehaus.plexus.interpolation.fixed.InterpolationState;
 import org.codehaus.plexus.interpolation.fixed.PrefixedObjectValueSource;
 import org.codehaus.plexus.interpolation.fixed.PrefixedPropertiesValueSource;
+import org.codehaus.plexus.interpolation.fixed.PropertiesBasedValueSource;
+import org.codehaus.plexus.logging.Logger;
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.cli.CommandLineException;
@@ -111,10 +125,28 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
   private MavenProjectHelper projectHelper;
 
   /**
+   * The Maven Session Object
+   */
+  @Parameter(defaultValue = "${session}", readonly = true)
+  private MavenSession session;
+
+  /**
+   * The Maven Project Builder component
+   */
+  @Component
+  private ProjectBuilder projectBuilder;
+
+  /**
    * The Velocity Component.
    */
   @Component
   private VelocityComponent velocity;
+
+  /**
+   * Used to select dependency artifacts to include in bundle.
+   */
+  @Parameter(defaultValue = "${classObject}")
+  private ArtifactSet artifactSet;
 
   /**
    * Paths to be put on the classpath in addition to the projects dependencies. <br/>
@@ -534,42 +566,104 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
    * @throws MojoExecutionException
    */
   private List<String> copyDependencies(File javaDirectory) throws MojoExecutionException {
-    ArtifactRepositoryLayout layout = new DefaultRepositoryLayout();
-
     List<String> list = new ArrayList<String>();
+    String outputDirectory = artifactSet.getOutputDirectory();
+    String outputFileNameMapping = artifactSet.getOutputFileNameMapping();
 
     // First, copy the project's own artifact
-    File artifactFile = project.getArtifact().getFile();
-    list.add(layout.pathOf(project.getArtifact()));
-
-    try {
-      FileUtils.copyFile(
-              artifactFile,
-              new File(javaDirectory, layout.pathOf(project.getArtifact())));
-    } catch (IOException ex) {
-      throw new MojoExecutionException(
-              "Could not copy artifact file " + artifactFile + " to " + javaDirectory,
-              ex);
+    if (artifactSet.isUseProjectArtifact()) {
+      Artifact artifact = project.getArtifact();
+      if (artifact != null) {
+        list.add(copyArtifact(artifact, javaDirectory, outputDirectory, outputFileNameMapping));
+      }
     }
 
-    for (Artifact artifact : project.getArtifacts()) {
-      File file = artifact.getFile();
-      File dest = new File(javaDirectory, layout.pathOf(artifact));
-
-      getLog().debug("Adding " + file);
-
-      try {
-        FileUtils.copyFile(file, dest);
-      } catch (IOException ex) {
-        throw new MojoExecutionException(
-                "Error copying file " + file + " into " + javaDirectory,
-                ex);
-      }
-
-      list.add(layout.pathOf(artifact));
+    Set<Artifact> artifacts = project.getArtifacts();
+    filterArtifacts(
+            artifacts,
+            artifactSet.getIncludes(),
+            artifactSet.getExcludes(),
+            artifactSet.isUseTransitiveFiltering(),
+            artifactSet.isUseStrictFiltering());
+    for (Artifact artifact : artifacts) {
+      list.add(copyArtifact(artifact, javaDirectory, outputDirectory, outputFileNameMapping));
     }
 
     return list;
+  }
+
+  private String copyArtifact(
+          Artifact artifact,
+          File baseDirecory,
+          String outputDirectory,
+          String outputFileNameMapping) throws MojoExecutionException {
+    String mappedName = mapFileName(artifact, outputFileNameMapping);
+    if (StringUtils.isNotBlank(outputDirectory)) {
+      if (!outputDirectory.endsWith("/")) {
+        outputDirectory = outputDirectory + "/";
+      }
+      mappedName = outputDirectory + mappedName;
+    }
+    File file = artifact.getFile();
+    try {
+      getLog().debug("Adding artifact " + file);
+      FileUtils.copyFile(file, new File(baseDirecory, mappedName));
+    } catch (IOException ex) {
+      throw new MojoExecutionException(
+              "Could not copy artifact file " + file + " to " + baseDirecory,
+              ex);
+    }
+    return mappedName;
+  }
+
+  private void filterArtifacts(
+          Set<Artifact> artifacts,
+          List<String> includes,
+          List<String> excludes,
+          boolean actTransitively,
+          boolean strictFiltering) throws MojoExecutionException {
+    List<ArtifactFilter> allFilters = new ArrayList<ArtifactFilter>();
+    AndArtifactFilter filter = new AndArtifactFilter();
+
+    if (includes != null && !includes.isEmpty()) {
+      ArtifactFilter includeFilter = new PatternIncludesArtifactFilter(includes, actTransitively);
+      filter.add(includeFilter);
+      allFilters.add(includeFilter);
+    }
+
+    if (excludes != null && !excludes.isEmpty()) {
+      ArtifactFilter excludesFilter = new PatternExcludesArtifactFilter(excludes, actTransitively);
+      filter.add(excludesFilter);
+      allFilters.add(excludesFilter);
+    }
+
+    for (Iterator<Artifact> iter = artifacts.iterator(); iter.hasNext();) {
+      Artifact artifact = iter.next();
+      if (!filter.include(artifact)) {
+        iter.remove();
+        if (getLog().isDebugEnabled()) {
+          getLog().debug(artifact.getId() + " was removed by one or more filters.");
+        }
+      }
+    }
+
+    boolean missedCriteria = false;
+    Logger plexusLogger = new MojoLogger(getLog());
+    for (ArtifactFilter f : allFilters) {
+      if (f instanceof StatisticsReportingArtifactFilter) {
+        StatisticsReportingArtifactFilter sFilter = (StatisticsReportingArtifactFilter) f;
+        if (getLog().isDebugEnabled()) {
+          getLog().debug("Statistics for " + sFilter + "\n");
+        }
+        sFilter.reportFilteredArtifacts(plexusLogger);
+        sFilter.reportFilteredArtifacts(plexusLogger);
+        missedCriteria = missedCriteria || sFilter.hasMissedCriteria();
+      }
+    }
+    if (missedCriteria && strictFiltering) {
+      throw new MojoExecutionException(
+              "One or more filters had unmatched criteria. See debug log for more information.");
+    }
   }
 
   /**
@@ -716,7 +810,7 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
 
       String outDir = fs.getOutputDirectory();
       if (StringUtils.isNotBlank(outDir)) {
-        outDir = interpolate(outDir);
+        outDir = getOutputDirectory(outDir);
         if (!outDir.endsWith(File.separator)) {
           outDir = outDir + File.separator;
         }
@@ -742,10 +836,68 @@ public class CreateApplicationBundleMojo extends AbstractMojo {
         copiedFiles.add(fileName);
       }
     }
+    getLog().info("Copied " + copiedFiles.size() + " file(s) to bundle.");
     return copiedFiles;
   }
 
-  private String interpolate(String expression) {
+  private String getOutputDirectory(String outputDirectory) {
+    return interpolate(interpolator, outputDirectory);
+  }
+
+  private String mapFileName(Artifact artifact, String expression) {
+    FixedStringSearchInterpolator interpolator = getFileNameMappingInterplator(artifact);
+    return interpolate(interpolator, expression);
+  }
+
+  private FixedStringSearchInterpolator getFileNameMappingInterplator(Artifact artifact) {
+    ProjectBuildingRequest pbr = session.getProjectBuildingRequest();
+    MavenProject depProject;
+    try {
+      ProjectBuildingResult build = projectBuilder.build(artifact, pbr);
+      depProject = build.getProject();
+    } catch (ProjectBuildingException e) {
+      getLog().debug(
+              "Error retrieving POM of module-dependency: " + artifact.getId() + "; Reason: "
+                      + e.getMessage() + "\n\nBuilding stub project instance.");
+      depProject = buildProjectStub(artifact);
+    }
+    return FixedStringSearchInterpolator.create(
+            new PrefixedObjectValueSource("module.", project),
+            new PrefixedPropertiesValueSource("module.properties.", project.getProperties()),
+            new PrefixedObjectValueSource("artifact.", artifact),
+            new PrefixedObjectValueSource("artifact.", artifact.getArtifactHandler()),
+            new PrefixedObjectValueSource("artifact.", depProject),
+            new PrefixedPropertiesValueSource("artifact.", depProject.getProperties()),
+            classifierRules(artifact),
+            interpolator);
+  }
+
+  private FixedStringSearchInterpolator classifierRules(Artifact artifact) {
+    Properties rules = new Properties();
+    String classifier = artifact.getClassifier();
+    if (StringUtils.isNotBlank(classifier)) {
+      rules.setProperty("dashClassifier?", "-" + classifier);
+      rules.setProperty("dashClassifier", "-" + classifier);
+    } else {
+      rules.setProperty("dashClassifier?", "");
+      rules.setProperty("dashClassifier", "");
+    }
+    return FixedStringSearchInterpolator.create(new PropertiesBasedValueSource(rules));
+  }
+
+  private MavenProject buildProjectStub(Artifact artifact) {
+    Model model = new Model();
+    model.setGroupId(artifact.getGroupId());
+    model.setArtifactId(artifact.getArtifactId());
+    model.setVersion(artifact.getBaseVersion());
+    model.setPackaging(artifact.getType());
+    model.setDescription("Stub for " + artifact.getId());
+    MavenProject result = new MavenProject(model);
+    result.setArtifact(artifact);
+    return result;
+  }
+
+  private String interpolate(FixedStringSearchInterpolator interpolator, String expression) {
     InterpolationState is = new InterpolationState();
     is.setRecursionInterceptor(interceptor);
     return interpolator.interpolate(expression, is);
